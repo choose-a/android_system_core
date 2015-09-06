@@ -292,6 +292,7 @@ static void update_screen_state(charger* charger, int64_t now) {
         healthd_draw.reset(new HealthdDraw(batt_anim));
 
 #ifndef CHARGER_DISABLE_INIT_BLANK
+        healthd_board_mode_charger_set_backlight(false);
         healthd_draw->blank_screen(true);
 #endif
     }
@@ -300,6 +301,7 @@ static void update_screen_state(charger* charger, int64_t now) {
     if (batt_anim->num_cycles > 0 && batt_anim->cur_cycle == batt_anim->num_cycles) {
         reset_animation(batt_anim);
         charger->next_screen_transition = -1;
+        healthd_board_mode_charger_set_backlight(false);
         healthd_draw->blank_screen(true);
         LOGV("[%" PRId64 "] animation done\n", now);
         if (charger->charger_connected) request_suspend(true);
@@ -309,7 +311,10 @@ static void update_screen_state(charger* charger, int64_t now) {
     disp_time = batt_anim->frames[batt_anim->cur_frame].disp_time;
 
     /* unblank the screen on first cycle and first frame */
-    if (batt_anim->cur_cycle == 0 && batt_anim->cur_frame == 0) healthd_draw->blank_screen(false);
+    if (batt_anim->cur_cycle == 0 && batt_anim->cur_frame == 0) {
+        healthd_draw->blank_screen(false);
+        healthd_board_mode_charger_set_backlight(true);
+    }
 
     /* animation starting, set up the animation */
     if (batt_anim->cur_frame == 0) {
@@ -419,6 +424,7 @@ static void set_next_key_check(charger* charger, key_state* key, int64_t timeout
 }
 
 static void process_key(charger* charger, int code, int64_t now) {
+    struct animation *batt_anim = charger->batt_anim;
     key_state* key = &charger->keys[code];
 
     if (code == KEY_POWER) {
@@ -448,16 +454,25 @@ static void process_key(charger* charger, int code, int64_t now) {
                  */
                 set_next_key_check(charger, key, POWER_ON_KEY_TIME);
 
-                /* Turn on the display and kick animation on power-key press
-                 * rather than on key release
-                 */
-                kick_animation(charger->batt_anim);
-                request_suspend(false);
             }
         } else {
-            /* if the power key got released, force screen state cycle */
             if (key->pending) {
-                kick_animation(charger->batt_anim);
+                /* If key is pressed when the animation is not running, kick
+                 * the animation and quite suspend; If key is pressed when
+                 * the animation is running, turn off the animation and request
+                 * suspend.
+                 */
+                if (!batt_anim->run) {
+                    kick_animation(batt_anim);
+                    request_suspend(false);
+                } else {
+                    reset_animation(batt_anim);
+                    charger->next_screen_transition = -1;
+                    healthd_board_mode_charger_set_backlight(false);
+                    gr_fb_blank(true);
+                    if (charger->charger_connected)
+                        request_suspend(true);
+                }
             }
         }
     }
@@ -474,6 +489,8 @@ static void handle_input_state(charger* charger, int64_t now) {
 
 static void handle_power_supply_state(charger* charger, int64_t now) {
     if (!charger->have_battery_state) return;
+
+    healthd_board_mode_charger_battery_update(batt_prop);
 
     if (!charger->charger_connected) {
         /* Last cycle would have stopped at the extreme top of battery-icon
@@ -621,6 +638,8 @@ void healthd_mode_charger_init(struct healthd_config* config) {
     int epollfd;
 
     dump_last_kmsg();
+
+    healthd_board_mode_charger_init();
 
     LOGW("--------------- STARTING CHARGER MODE ---------------\n");
 
