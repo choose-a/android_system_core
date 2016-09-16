@@ -53,6 +53,7 @@ LOCAL_SRC_FILES:= \
     reboot.cpp \
     signal_handler.cpp \
     ueventd.cpp \
+    vendor_init.cpp \
     watchdogd.cpp \
 
 LOCAL_MODULE:= init
