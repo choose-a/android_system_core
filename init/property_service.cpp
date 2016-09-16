@@ -63,6 +63,8 @@
 #include "subcontext.h"
 #include "util.h"
 
+#include "vendor_init.h"
+
 using namespace std::literals;
 
 using android::base::GetIntProperty;
@@ -723,6 +725,10 @@ void load_persist_props(void) {
     }
     persistent_properties_loaded = true;
     property_set("ro.persistent_properties.ready", "true");
+
+    /* vendor-specific properties
+     */
+    vendor_load_properties();
 }
 
 void load_recovery_id_prop() {
