@@ -56,8 +56,6 @@
 #include "init.h"
 #include "util.h"
 
-#include "vendor_init.h"
-
 using android::base::Timer;
 
 #define PERSISTENT_PROPERTY_DIR  "/data/property"
@@ -65,6 +63,10 @@ using android::base::Timer;
 
 namespace android {
 namespace init {
+
+#ifdef TARGET_INIT_VENDOR_LIB
+extern void vendor_load_properties(void);
+#endif
 
 static int persistent_properties_loaded = 0;
 
@@ -702,9 +704,12 @@ void load_persist_props(void) {
     load_persistent_properties();
     property_set("ro.persistent_properties.ready", "true");
 
+#ifdef TARGET_INIT_VENDOR_LIB
     /* vendor-specific properties
      */
     vendor_load_properties();
+#endif
+
 }
 
 void load_recovery_id_prop() {
